@@ -10,6 +10,7 @@ RUN pip install --only-binary=:all: -r requirements.txt
 
 # Copy function code
 COPY app.py ${LAMBDA_TASK_ROOT}
+COPY search_client.py ${LAMBDA_TASK_ROOT}
 
 # Set the CMD to your handler
 CMD [ "app.lambda_handler" ]
