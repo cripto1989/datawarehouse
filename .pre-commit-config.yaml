@@ -1,0 +1,62 @@
+default_install_hook_types:
+  - pre-commit
+
+repos:
+
+  # ── Ruff: lint + format (replaces flake8, pyupgrade, black) ──────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.10
+    hooks:
+      - id: ruff                  # linter — catches errors, style issues, unused imports
+        args:
+          - --fix                 # auto-fix safe violations
+          - --line-length=120
+      - id: ruff-format           # formatter — opinionated code style (replaces black)
+        args:
+          - --line-length=120
+
+  # ── isort: import ordering ───────────────────────────────────────────────
+  - repo: https://github.com/PyCQA/isort
+    rev: 6.0.1
+    hooks:
+      - id: isort
+        args:
+          - --profile=black       # compatible with ruff-format style
+          - --line-length=120
+
+  # ── pre-commit built-in hooks: general file hygiene ─────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace   # removes trailing spaces
+      - id: end-of-file-fixer     # ensures files end with a newline
+      - id: check-yaml            # validates YAML syntax (e.g. this file)
+      - id: check-json            # validates JSON syntax
+      - id: check-merge-conflict  # blocks accidental merge conflict markers
+      - id: check-added-large-files  # prevents committing large binary files
+        args: ["--maxkb=1000"]
+      - id: debug-statements      # catches leftover debugger calls (pdb, breakpoint)
+      - id: detect-private-key    # blocks accidental commit of private keys
+
+    # ── detect-secrets: prevents committing credentials / secrets ────────────
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args:
+          - --baseline
+          - .secrets.baseline
+        exclude: ^\.env\.example$
+
+  # ── shellcheck: shell script linter ──────────────────────────────────────
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+
+  # ── shfmt: shell script formatter ────────────────────────────────────────
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.8.0-1
+    hooks:
+      - id: shfmt
+        args: [-i, '2', -ci, -bn]
