@@ -1,14 +1,16 @@
 {
   "name": "Python 3.12",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
-  "postCreateCommand": "apt-get update && apt-get install -y zip zsh git && pip install --upgrade pip && pip install -r requirements-dev.txt && sh -c \"$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\" \"\" --unattended && git clone https://github.com/wfxr/forgit.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/forgit && sed -i 's/plugins=(git)/plugins=(git forgit)/' ~/.zshrc && git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf && ~/.fzf/install --all && chsh -s /bin/zsh",
+  "postCreateCommand": "bash .devcontainer/setup.sh",
   "remoteUser": "root",
   "customizations": {
     "vscode": {
       "extensions": [
         "ms-python.python",
         "wayou.vscode-todo-highlight",
-        "AtomMaterial.a-file-icon-vscode"
+        "AtomMaterial.a-file-icon-vscode",
+        "johnpapa.vscode-peacock",
+        "AdamViola.parquet-explorer"
       ]
     }
   }
