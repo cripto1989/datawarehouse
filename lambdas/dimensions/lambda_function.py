@@ -1,10 +1,15 @@
 import json
+import logging
 import os
 from typing import Any, Dict, List
 
 import awswrangler as wr
 import pandas as pd
 from db import execute_query, get_db_connection
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
 
 # Environment variables for database connection
 DB_HOST = os.environ.get("DB_HOST")
@@ -74,7 +79,9 @@ def lambda_handler(event, context):
     """
     connection = None
     try:
-        query = event.get("query", "SELECT * FROM machine_partconfiguration;")
+        query = event.get(
+            "query", "SELECT * FROM machine_partconfiguration pc INNER JOIN machine_part p ON pc.part_id = p.id;;"
+        )
         params = event.get("params", None)
         s3_path = event.get("s3_path")
 
