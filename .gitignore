@@ -138,5 +138,5 @@ Thumbs.db
 .env.local
 .env.*.local
 
-fact.zip
-dimensions.zip
+*.parquet
+*.jsonl
