@@ -9,5 +9,5 @@ class LocalStorageAdapter(StoragePort):
     def read_parquet(self, path: str) -> pd.DataFrame:
         return pd.read_parquet(path)
 
-    def write_parquet(self):
-        pass
+    def write_parquet(self, df: pd.DataFrame, path: str):
+        df.to_parquet(path, index=False)
