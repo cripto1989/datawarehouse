@@ -1,12 +1,15 @@
 from abc import ABC, abstractmethod
-from typing import Dict
 
 import pandas as pd
 
 
 class StoragePort(ABC):
     @abstractmethod
-    def read_parquet(self, event: Dict) -> pd.DataFrame:
+    def read_json(self, path: str) -> pd.DataFrame:
+        pass
+
+    @abstractmethod
+    def read_parquet(self, path: str) -> pd.DataFrame:
         pass
 
     @abstractmethod
