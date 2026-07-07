@@ -12,4 +12,4 @@ RUN pip install --only-binary=:all: -r requirements.txt
 COPY *.py ${LAMBDA_TASK_ROOT}
 
 # Set the CMD to your handler
-CMD [ "app.lambda_handler" ]
+CMD [ "lambda_function.lambda_handler" ]
