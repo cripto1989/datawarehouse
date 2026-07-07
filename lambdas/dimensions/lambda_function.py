@@ -65,57 +65,104 @@ def save_results_to_s3(results: List[Dict[str, Any]], s3_path: str) -> str:
 
 def lambda_handler(event, context):
     """
-    AWS Lambda handler function.
+    AWS Lambda handler function that processes multiple queries.
 
     Args:
         event: Lambda event object containing:
-            - query: SQL query string (optional, defaults to SELECT * FROM machine_partconfiguration;)
-            - params: Optional tuple of parameters for parameterized queries
-            - s3_path: S3 path where to save the parquet file (e.g., s3://bucket-name/path/file.parquet)
+            - queries: List of query objects, each containing:
+                - query: SQL query string
+                - path: S3 path where to save the parquet file
         context: Lambda context object
 
     Returns:
-        dict: Response with status code and body containing query results and S3 save status
+        dict: Response with status code and body containing processing results for all queries
     """
     connection = None
     try:
-        query = event.get(
-            "query", "SELECT * FROM machine_partconfiguration pc INNER JOIN machine_part p ON pc.part_id = p.id;;"
-        )
-        params = event.get("params", None)
-        s3_path = event.get("s3_path")
-
         print(f"Lambda invoked with event: {json.dumps(event)}")
+
+        # Extract queries from event
+        queries = event.get("queries", [])
+
+        if not queries:
+            return {"statusCode": 400, "body": json.dumps({"message": "No queries provided in event"})}
 
         # Establish database connection
         connection = get_db_connection(host=DB_HOST, user=DB_USER, password=DB_PASSWORD, db_name=DB_NAME, port=DB_PORT)
 
-        # Execute the query
-        results = execute_query(connection, query, params)
+        # Process results for tracking successes and failures
+        processed_queries = []
+        failed_queries = []
+        total_rows = 0
 
-        # Save results to S3 in parquet format if s3_path is provided
-        s3_save_path = None
-        if s3_path:
-            s3_save_path = save_results_to_s3(results, s3_path)
+        # Iterate through each query
+        for index, query_obj in enumerate(queries):
+            try:
+                query = query_obj.get("query")
+                s3_path = query_obj.get("path")
 
-        # Return successful response
+                if not query:
+                    failed_queries.append({"index": index, "error": "Query not provided in query object"})
+                    continue
+
+                if not s3_path:
+                    failed_queries.append({"index": index, "error": "S3 path not provided in query object"})
+                    continue
+
+                print(f"Processing query {index + 1}/{len(queries)}: {query[:100]}...")
+
+                # Execute the query
+                results = execute_query(connection, query, None)
+                row_count = len(results)
+                total_rows += row_count
+
+                # Save results to S3
+                try:
+                    s3_save_path = save_results_to_s3(results, s3_path)
+                    processed_queries.append(
+                        {
+                            "index": index,
+                            "query": query[:100] + "..." if len(query) > 100 else query,
+                            "s3_path": s3_save_path,
+                            "rowCount": row_count,
+                            "status": "success",
+                        }
+                    )
+                except Exception as s3_error:
+                    failed_queries.append(
+                        {
+                            "index": index,
+                            "query": query[:100] + "..." if len(query) > 100 else query,
+                            "error": f"Failed to save to S3: {str(s3_error)}",
+                        }
+                    )
+
+            except Exception as query_error:
+                failed_queries.append({"index": index, "error": str(query_error)})
+
+        # Prepare response
         response_body = {
-            "message": "Query executed successfully",
-            "rowCount": len(results),
+            "message": f"Processed {len(queries)} queries",
+            "totalRows": total_rows,
+            "successCount": len(processed_queries),
+            "failureCount": len(failed_queries),
+            "processedQueries": processed_queries,
         }
 
-        if s3_save_path:
-            response_body["s3_path"] = s3_save_path
-            response_body["message"] = "Query executed successfully and results saved to S3"
+        if failed_queries:
+            response_body["failedQueries"] = failed_queries
+            status_code = 207 if processed_queries else 500  # 207 Partial Success or 500 if all failed
+        else:
+            status_code = 200
 
         return {
-            "statusCode": 200,
+            "statusCode": status_code,
             "body": response_body,
         }
 
     except Exception as e:
         print(f"Error in lambda_handler: {str(e)}")
-        return {"statusCode": 500, "body": json.dumps({"message": "Error executing query", "error": str(e)})}
+        return {"statusCode": 500, "body": json.dumps({"message": "Error processing queries", "error": str(e)})}
 
     finally:
         # Always close the database connection

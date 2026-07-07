@@ -45,7 +45,16 @@ aws lambda create-function \
 
 ```json
 {
-  "s3_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_part_configurations/part_configuration.parquet"
+  "queries": [
+    {
+      "query": "SELECT * FROM machine_partconfiguration pc INNER JOIN machine_part p ON pc.part_id = p.id;",
+      "path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_part_configurations/part_configuration.parquet"
+    },
+    {
+      "query": "SELECT * FROM machine_statuscode sc INNER JOIN machine_status s ON sc.status_id = s.id ORDER BY sc.code;",
+      "path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_status_code/machines_status_code.parquet"
+    }
+  ]
 }
 ```
 
