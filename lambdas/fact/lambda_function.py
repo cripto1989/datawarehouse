@@ -29,6 +29,8 @@ DEFAULT_EVENT_COLUMNS = [
 
 PART_CONFIGURATION_COLUMNS = ["id", "machine_id", "seconds_per_part", "multiplier", "name"]
 
+DEFAULT_MACHINE_STATUS_CODE_COLUMNS = ["code", "planned_down", "unplanned_down"]
+
 
 def lambda_handler(event, context):
     """
@@ -50,6 +52,7 @@ def lambda_handler(event, context):
     local_timezone = event.get("local_timezone", "Europe/London")
     events_path = event.get("events_path")
     part_configuration_path = event.get("part_configuration_path")
+    machine_status_code_path = event.get("machine_status_code_path")
 
     # Validate s3_input_path
     if not events_path:
@@ -65,7 +68,7 @@ def lambda_handler(event, context):
         events_df = events_df[DEFAULT_EVENT_COLUMNS]
         # styled_dataframe(events_df, title="📊 Machine Events")
         # display_dataframe(events_df, title="Events", max_rows=10)
-        printer.display_dataframe(df=events_df, title="Events", max_rows=10)
+        # printer.display_dataframe(df=events_df, title="Events", max_rows=10)
     except Exception as e:
         return {
             "statusCode": 500,
@@ -83,18 +86,33 @@ def lambda_handler(event, context):
             "body": {"message": f"Error reading part configuration from S3: {str(e)}"},
         }
 
-    # Remove records with null machine_id from events_df
-    events_df = events_df[events_df["machine_id"].notna()].copy()
+    try:
+        machine_status_code_df = storage.read_parquet(path=machine_status_code_path)
+        machine_status_code_df = machine_status_code_df[DEFAULT_MACHINE_STATUS_CODE_COLUMNS]
+        # printer.display_dataframe(df=machine_status_code_df, title="Machine status code", max_rows=15)
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "body": {"message": f"Error reading machine status code from S3: {str(e)}"},
+        }
+
+    # Remove records with null machine_id or empty machine_name from events_df
+    events_df = events_df[(events_df["machine_id"].notna()) & (events_df["machine_name"] != "")].copy()
 
     # Ensure compatible data types for merge keys before merging
     # Handle NaN values in machine_id columns by filling with 0, then convert to int64
     events_df["machine_id"] = events_df["machine_id"].fillna(0).astype("int64")
     part_configuration_df["machine_id"] = part_configuration_df["machine_id"].fillna(0).astype("int64")
+    machine_status_code_df["code"] = machine_status_code_df["code"].fillna(0).astype("int64")
 
     # printer.display_dataframe(events_df, title="Cleaned events", max_rows=10)
     merged_df = events_df.merge(
         part_configuration_df, left_on=["machine_id", "part_number"], right_on=["machine_id", "name"], how="left"
     )
+
+    # Second merge: merged_df with machine_status_code_df on status_code = code
+    merged_df = merged_df.merge(machine_status_code_df, left_on="status_code", right_on="code", how="left")
+
     result_df = transform(df=merged_df, local_timezone=local_timezone)
     printer.display_dataframe(result_df, title="Events with Part Configuration", max_rows=10)
 
