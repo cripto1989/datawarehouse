@@ -1,6 +1,8 @@
-ipython
-pre-commit
-PyMySQL==1.2.0
-pandas==2.2.0
 awswrangler==3.6.0
+python-dotenv
+ipython
+pandas==2.2.0
+pre-commit
 pyarrow==14.0.2
+PyMySQL==1.2.0
+rich==15.0.0
