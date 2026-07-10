@@ -1,8 +1,9 @@
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List
+from zoneinfo import ZoneInfo
 
 import boto3
 from opensearchpy import OpenSearch
@@ -20,7 +21,8 @@ def lambda_handler(event, context):
     {
         "start_time": "2024-01-01T00:00:00",
         "end_time": "2024-01-31T23:59:59",
-        "index_name": "your-index-name"
+        "index_name": "your-index-name",
+        "local_timezone": "Europe/London"
     }
     """
 
@@ -28,12 +30,18 @@ def lambda_handler(event, context):
     start_time = event.get("start_time")
     end_time = event.get("end_time")
     index_name = event.get("index_name", "your-default-index")
+    local_timezone = event.get("local_timezone", "Europe/London")
 
     # OpenSearch configuration from environment variables
-    opensearch_endpoint = os.environ["OPENSEARCH_ENDPOINT"]
+    opensearch_endpoint = os.environ.get("OPENSEARCH_ENDPOINT", "")
     region = os.environ.get("REGION", "us-east-2")
-    username = os.environ["OPENSEARCH_USERNAME"]
-    password = os.environ["OPENSEARCH_PASSWORD"]
+    username = os.environ.get("OPENSEARCH_USERNAME")
+    password = os.environ.get("OPENSEARCH_PASSWORD")
+
+    if not start_time or end_time:
+        yesterday = datetime.now(ZoneInfo(local_timezone)) + timedelta(days=-1)
+        yesterday = yesterday.date().strftime("%Y-%m-%d")
+        start_time, end_time = get_date_range(yesterday)
 
     opensearch_client = OpenSearchClient(
         region=region,
@@ -210,3 +218,22 @@ def load(data: List[Dict], s3_path: str):
     s3_client.put_object(Bucket=bucket, Key=key, Body=json_lines.encode("utf-8"), ContentType="application/x-ndjson")
 
     print(f"Successfully loaded {len(data)} records to {full_s3_path}")
+
+
+def get_date_range(date: str) -> tuple[str, str]:
+    """
+    Convert a date string (YYYY-MM-DD) into a start/end datetime range.
+
+    Returns:
+        Tuple of (start_datetime, end_datetime) formatted as:
+        %Y-%m-%dT%H:%M:%S
+    """
+    date_obj = datetime.strptime(date, "%Y-%m-%d")
+
+    start_datetime = date_obj.replace(hour=23, minute=0, second=0, microsecond=0)
+    end_datetime = date_obj.replace(hour=22, minute=59, second=59, microsecond=0)
+
+    start_str = start_datetime.strftime("%Y-%m-%dT%H:%M:%S")
+    end_str = end_datetime.strftime("%Y-%m-%dT%H:%M:%S")
+
+    return start_str, end_str
