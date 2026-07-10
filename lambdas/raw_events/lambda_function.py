@@ -57,7 +57,7 @@ def lambda_handler(event, context):
         index_name=index_name,
     )
     s3_path = event.get("s3_path")
-    load(data=data, s3_path=s3_path)
+    load(data=data, s3_path=s3_path, local_timezone=local_timezone)
 
 
 def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str) -> List[Dict]:
@@ -148,7 +148,7 @@ def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str)
     return data
 
 
-def load(data: List[Dict], s3_path: str):
+def load(data: List[Dict], s3_path: str, local_timezone: str):
     """
     Load raw event data to Amazon S3 as a JSON file.
 
@@ -194,9 +194,9 @@ def load(data: List[Dict], s3_path: str):
     if not data:
         raise ValueError("No data to load. The data list is empty.")
 
-    # Generate timestamped filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"raw_events_{timestamp}.jsonl"
+    # Generate date filename base in London timezone
+    today_date = datetime.now(ZoneInfo(local_timezone)).date().strftime("%Y%m%d")
+    filename = f"raw_events_{today_date}.jsonl"
 
     # Ensure s3_path ends with /
     if not s3_path.endswith("/"):
