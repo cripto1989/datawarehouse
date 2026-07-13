@@ -1,8 +1,9 @@
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List
+from zoneinfo import ZoneInfo
 
 import boto3
 from opensearchpy import OpenSearch
@@ -20,7 +21,8 @@ def lambda_handler(event, context):
     {
         "start_time": "2024-01-01T00:00:00",
         "end_time": "2024-01-31T23:59:59",
-        "index_name": "your-index-name"
+        "index_name": "your-index-name",
+        "local_timezone": "Europe/London"
     }
     """
 
@@ -28,13 +30,26 @@ def lambda_handler(event, context):
     start_time = event.get("start_time")
     end_time = event.get("end_time")
     index_name = event.get("index_name", "your-default-index")
+    local_timezone = event.get("local_timezone", "Europe/London")
 
     # OpenSearch configuration from environment variables
-    opensearch_endpoint = os.environ["OPENSEARCH_ENDPOINT"]
+    opensearch_endpoint = os.environ.get("OPENSEARCH_ENDPOINT", "")
     region = os.environ.get("REGION", "us-east-2")
-    username = os.environ["OPENSEARCH_USERNAME"]
-    password = os.environ["OPENSEARCH_PASSWORD"]
+    username = os.environ.get("OPENSEARCH_USERNAME")
+    password = os.environ.get("OPENSEARCH_PASSWORD")
 
+    if start_time and end_time:
+        logger.info("Start time and end time received.")
+        start_time = validate_datetime_string(start_time, "start_time")
+        end_time = validate_datetime_string(end_time, "end_time")
+        validate_time_range(start_time, end_time)
+    else:
+        today = datetime.now(ZoneInfo(local_timezone)).date() + timedelta(days=-1)
+        today = today.date().strftime("%Y-%m-%d")
+        start_time, end_time = get_date_range(today)
+    logger.info(f"From {start_time} to {end_time}.")
+
+    filename = f"raw_events_{end_time.replace('-', '')[:8]}.jsonl"
     opensearch_client = OpenSearchClient(
         region=region,
         endpoint=opensearch_endpoint,
@@ -49,7 +64,7 @@ def lambda_handler(event, context):
         index_name=index_name,
     )
     s3_path = event.get("s3_path")
-    load(data=data, s3_path=s3_path)
+    return load(data=data, s3_path=s3_path, local_timezone=local_timezone, filename=filename)
 
 
 def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str) -> List[Dict]:
@@ -136,11 +151,10 @@ def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str)
         source = hit.get("_source", {})
         source["status_code"] = source.get("status_code", -1)
         data.append(source)
-    logger.info(f"FINAL DATA {data}")
     return data
 
 
-def load(data: List[Dict], s3_path: str):
+def load(data: List[Dict], s3_path: str, local_timezone: str, filename: str):
     """
     Load raw event data to Amazon S3 as a JSON file.
 
@@ -186,10 +200,6 @@ def load(data: List[Dict], s3_path: str):
     if not data:
         raise ValueError("No data to load. The data list is empty.")
 
-    # Generate timestamped filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"raw_events_{timestamp}.jsonl"
-
     # Ensure s3_path ends with /
     if not s3_path.endswith("/"):
         s3_path = s3_path + "/"
@@ -209,4 +219,93 @@ def load(data: List[Dict], s3_path: str):
     s3_client = boto3.client("s3")
     s3_client.put_object(Bucket=bucket, Key=key, Body=json_lines.encode("utf-8"), ContentType="application/x-ndjson")
 
-    print(f"Successfully loaded {len(data)} records to {full_s3_path}")
+    logger.info(f"Successfully loaded {len(data)} records to {full_s3_path}")
+    return {
+        "statusCode": 200,
+        "body": {
+            "message": "Successfully loaded raw events to S3.",
+            "records_loaded": len(data),
+            "s3_path": full_s3_path,
+        },
+    }
+
+
+def get_date_range(date: str) -> tuple[str, str]:
+    """
+    Convert a date string (YYYY-MM-DD) into a start/end datetime range.
+
+    The start datetime is the previous day at 23:00:00.
+    The end datetime is the provided day at 22:59:59.
+
+    Returns:
+        Tuple of (start_datetime, end_datetime) formatted as:
+        %Y-%m-%dT%H:%M:%S
+    """
+
+    date_obj = datetime.strptime(date, "%Y-%m-%d")
+
+    start_datetime = (date_obj - timedelta(days=1)).replace(hour=23, minute=0, second=0, microsecond=0)
+    end_datetime = date_obj.replace(hour=22, minute=59, second=59, microsecond=0)
+
+    start_str = start_datetime.strftime("%Y-%m-%dT%H:%M:%S")
+    end_str = end_datetime.strftime("%Y-%m-%dT%H:%M:%S")
+
+    return start_str, end_str
+
+
+def validate_datetime_string(value: str, field_name: str = "datetime") -> str:
+    """
+    Validate a datetime string in the exact format YYYY-MM-DDTHH:MM:SS.
+
+    Parameters
+    ----------
+    value : str
+        The datetime string to validate.
+    field_name : str
+        The name of the field being validated, used in error messages.
+
+    Returns
+    -------
+    str
+        The validated datetime string.
+
+    Raises
+    ------
+    ValueError
+        If the value is not a string or does not match the expected format.
+    """
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string in the format YYYY-MM-DDTHH:MM:SS.")
+
+    try:
+        parsed_value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be a valid datetime string in the format YYYY-MM-DDTHH:MM:SS.") from exc
+
+    if parsed_value.strftime("%Y-%m-%dT%H:%M:%S") != value:
+        raise ValueError(f"{field_name} must match the exact format YYYY-MM-DDTHH:MM:SS.")
+
+    return value
+
+
+def validate_time_range(start_time: str, end_time: str) -> None:
+    """
+    Validate that end_time is greater than start_time.
+
+    Parameters
+    ----------
+    start_time : str
+        Start datetime string in the format YYYY-MM-DDTHH:MM:SS.
+    end_time : str
+        End datetime string in the format YYYY-MM-DDTHH:MM:SS.
+
+    Raises
+    ------
+    ValueError
+        If end_time is not greater than start_time.
+    """
+    start_dt = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
+    end_dt = datetime.strptime(end_time, "%Y-%m-%dT%H:%M:%S")
+
+    if end_dt <= start_dt:
+        raise ValueError("end_time must be greater than start_time.")
