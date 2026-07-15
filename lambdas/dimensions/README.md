@@ -53,6 +53,14 @@ aws lambda create-function \
     {
       "query": "SELECT * FROM machine_statuscode sc INNER JOIN machine_status s ON sc.status_id = s.id ORDER BY sc.code;",
       "path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_status_code/machines_status_code.parquet"
+    },
+    {
+      "query": "SELECT child.id AS machine_group_child_id, child.name AS machine_group_child_name, parent.id AS machine_group_parent_id, parent.name AS machine_group_parent_name, grandparent.id AS machine_group_grandparent_id, grandparent.name AS machine_group_grandparent_name, great_grandparent.id AS machine_group_great_grandparent_id, great_grandparent.name AS machine_group_great_grandparent_name FROM machine_machinegroup child LEFT JOIN machine_machinegroup parent ON parent.id = child.parent_group_id LEFT JOIN machine_machinegroup grandparent ON grandparent.id = parent.parent_group_id LEFT JOIN machine_machinegroup great_grandparent ON great_grandparent.id = grandparent.parent_group_id;",
+      "path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_groups_hierarchy/machines_groups_hierarchy.parquet"
+    },
+    {
+      "query":"SELECT  * from user_shift;",
+      "path":"s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_shifts/shifts.parquet"
     }
   ]
 }
