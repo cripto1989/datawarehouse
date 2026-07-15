@@ -113,9 +113,11 @@ def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str)
             "part_number",
             "ideal_cycle_time",
             "multiplier",
+            "factory_order",
             # THIS CAN BE DELETED IF NOT REQUIRED
             "start_time",
             "end_time",
+            "shift_id",
             "shift_start",
             "shift_end",
             "production_date",
