@@ -70,10 +70,10 @@ aws lambda create-function \
 }
 ```
 
-## 7) Reference: Hive External Table
+## 7) Amazon Athena Tables
 
 ```sql
-CREATE EXTERNAL TABLE part_configuration (
+CREATE EXTERNAL TABLE default.dim_part_configuration (
     id BIGINT,
     seconds_per_part DOUBLE,
     machine_id BIGINT,
@@ -85,4 +85,43 @@ CREATE EXTERNAL TABLE part_configuration (
 )
 STORED AS PARQUET
 LOCATION 's3://bax-bxty-thf-data-warehouse/warehouse/thf/dim_part_configuration/part_configuration.parquet'
+
+MSCK REPAIR TABLE default.dim_part_configuration;
+```
+
+```sql
+CREATE EXTERNAL TABLE IF NOT EXISTS default.dim_shifts (
+    `id` int,
+    `name` string,
+    `color` string,
+    `is_active` int,
+    `active_start_date` timestamp,
+    `active_end_date` timestamp,
+    `group_id` int,
+    `erp_shift_name` string
+)
+STORED AS PARQUET
+LOCATION 's3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_shifts/'
+TBLPROPERTIES ("parquet.compress"="snappy");
+
+MSCK REPAIR TABLE default.dim_shifts;
+```
+
+```sql
+CREATE EXTERNAL TABLE IF NOT EXISTS default.dim_machines_groups_hierarchy (
+    `machine_id` int,
+    `machine_group_child_id` int,
+    `machine_group_child_name` string,
+    `machine_group_parent_id` int,
+    `machine_group_parent_name` string,
+    `machine_group_grandparent_id` int,
+    `machine_group_grandparent_name` string,
+    `machine_group_great_grandparent_id` int,
+    `machine_group_great_grandparent_name` string
+)
+STORED AS PARQUET
+LOCATION 's3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_groups_hierarchy/'
+TBLPROPERTIES ("parquet.compress"="snappy");
+
+MSCK REPAIR TABLE default.dim_machines_groups_hierarchy;
 ```
