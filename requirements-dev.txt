@@ -1,5 +1,6 @@
 awswrangler==3.6.0
 ipython
+jsonpath-ng==1.8.0
 opensearch-py==2.7.1
 pandas==2.2.0
 pre-commit
