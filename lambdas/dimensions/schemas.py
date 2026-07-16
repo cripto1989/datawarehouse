@@ -30,13 +30,13 @@ SCHEMAS = {
         "color_set": "string",
     },
     "machines_groups_hierarchy": {
-        "machine_group_child_id": "int64",
+        "machine_group_child_id": "int",
         "machine_group_child_name": "string",
-        "machine_group_parent_id": "int64",
+        "machine_group_parent_id": "int",
         "machine_group_parent_name": "string",
-        "machine_group_grandparent_id": "int64",
+        "machine_group_grandparent_id": "int",
         "machine_group_grandparent_name": "string",
-        "machine_group_great_grandparent_id": "int64",
+        "machine_group_great_grandparent_id": "int",
         "machine_group_great_grandparent_name": "string",
     },
     "shifts": {
