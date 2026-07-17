@@ -19,6 +19,6 @@ class S3StorageAdapter(StoragePort):
             # TODO Enabling these two values allow sync our database/table, it requires the right permissions.
             # database="default",
             # table="thf_events",
-            partition_cols=["machine_id", "year", "month", "day"],
+            partition_cols=["machine_id", "year", "month", "day", "hour"],
         )
         pass

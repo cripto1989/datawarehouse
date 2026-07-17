@@ -1,7 +1,6 @@
 import logging
 
 import pandas as pd
-import pytz
 from factory import get_printer, get_storage
 from storage_port import StoragePort
 
@@ -13,6 +12,7 @@ DEFAULT_EVENT_COLUMNS = [
     "time",
     "start_time",
     "end_time",
+    "shift_id",
     "shift_start",
     "shift_end",
     "production_date",
@@ -25,6 +25,7 @@ DEFAULT_EVENT_COLUMNS = [
     "status_code",
     "part_number",
     "ideal_cycle_time",
+    "factory_order",
 ]
 
 PART_CONFIGURATION_COLUMNS = ["id", "machine_id", "seconds_per_part", "multiplier", "name"]
@@ -38,11 +39,12 @@ def lambda_handler(event, context):
 
     Expected event structure:
     {
-        "s3_input_path": "s3://<PATH>/data.jsonl",
         "local_timezone": "Europe/London",
-        "save_to_s3": false,
+        "save_to_s3": true,
         "events_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/raw/events/raw_events_20260701.jsonl",
-        "part_configuration_path": "s3://bax-bxty-thf-data-warehouse.s3.eu-central-1.amazonaws.com/warehouse/thf/curated/dim_part_configurations/part_configuration.parquet"
+        "part_configuration_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_part_configurations/part_configuration.parquet",
+        "machine_status_code_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_status_code/machines_status_code.parquet",
+        "s3_output_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/fact_events/"
     }
     """
     storage = get_storage()
@@ -182,6 +184,9 @@ def transform(df: pd.DataFrame, local_timezone: str) -> pd.DataFrame:
     # Remove those in which the machine_id is equals to zero
     df = df[df["machine_id"] != 0].copy()
 
+    # TODO: Debug filter: keep only machine_id 104
+    # df = df[df["machine_id"] == 104].copy()
+
     # Ensure fields to be datetime values.
     df["start_time"] = pd.to_datetime(df["start_time"], utc=True, errors="coerce")
     df["end_time"] = pd.to_datetime(df["end_time"], utc=True, errors="coerce")
@@ -197,9 +202,10 @@ def transform(df: pd.DataFrame, local_timezone: str) -> pd.DataFrame:
         "scrapped",
         "event_duration",
         "status_code",
-        "production_target",
+        # "production_target",
         # PART CONFIGURATION
         "multiplier",
+        "shift_id",
     ]
 
     for col in int_cols:
@@ -207,17 +213,18 @@ def transform(df: pd.DataFrame, local_timezone: str) -> pd.DataFrame:
 
     # MODIFY TIMEZONE
     df["time"] = pd.to_datetime(df["time"], utc=True)
-    target_tz = pytz.timezone(local_timezone)  # or your timezone
-    df["time_local"] = df["time"].dt.tz_convert(target_tz)
+    # target_tz = pytz.timezone(local_timezone)  # or your timezone
+    # df["time_local"] = df["time"].dt.tz_convert(target_tz)
 
-    # PARTITION
-    df["time_local"] = pd.to_datetime(df["time_local"], errors="coerce")  # CONTINUE SAIDS CAN BRING ERRORS
-    df = df.dropna(subset=["time_local"])
+    # Convert time columns to datetime and handle errors by coercing invalid formats to NaT
+    df["time"] = pd.to_datetime(df["time"], errors="coerce")
+    df = df.dropna(subset=["time"])
 
     # Create partition columns
-    df["year"] = df["time_local"].dt.year.astype(str)
-    df["month"] = df["time_local"].dt.month.map(lambda x: f"{x:02d}")
-    df["day"] = df["time_local"].dt.day.map(lambda x: f"{x:02d}")
+    df["year"] = df["time"].dt.year.astype(str)
+    df["month"] = df["time"].dt.month.map(lambda x: f"{x:02d}")
+    df["day"] = df["time"].dt.day.map(lambda x: f"{x:02d}")
+    df["hour"] = df["time"].dt.hour.map(lambda x: f"{x:02d}")
     return df
 
 
