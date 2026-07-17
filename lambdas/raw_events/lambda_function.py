@@ -64,7 +64,13 @@ def lambda_handler(event, context):
         index_name=index_name,
     )
     s3_path = event.get("s3_path")
-    return load(data=data, s3_path=s3_path, local_timezone=local_timezone, filename=filename)
+    partition_path = build_partition_path(end_time)
+    return load(
+        data=data,
+        s3_path=s3_path,
+        filename=filename,
+        partition_path=partition_path,
+    )
 
 
 def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str) -> List[Dict]:
@@ -113,9 +119,11 @@ def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str)
             "part_number",
             "ideal_cycle_time",
             "multiplier",
+            "factory_order",
             # THIS CAN BE DELETED IF NOT REQUIRED
             "start_time",
             "end_time",
+            "shift_id",
             "shift_start",
             "shift_end",
             "production_date",
@@ -154,7 +162,7 @@ def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str)
     return data
 
 
-def load(data: List[Dict], s3_path: str, local_timezone: str, filename: str):
+def load(data: List[Dict], s3_path: str, filename: str, partition_path: str = ""):
     """
     Load raw event data to Amazon S3 as a JSON file.
 
@@ -200,12 +208,15 @@ def load(data: List[Dict], s3_path: str, local_timezone: str, filename: str):
     if not data:
         raise ValueError("No data to load. The data list is empty.")
 
-    # Ensure s3_path ends with /
+    # Ensure s3_path and partition_path end with /
     if not s3_path.endswith("/"):
         s3_path = s3_path + "/"
 
+    if partition_path and not partition_path.endswith("/"):
+        partition_path = partition_path + "/"
+
     # Construct full S3 path
-    full_s3_path = f"{s3_path}{filename}"
+    full_s3_path = f"{s3_path}{partition_path}{filename}"
 
     # Convert JSON lines to string
     json_lines = "\n".join(json.dumps(record, default=str) for record in data)
@@ -228,6 +239,13 @@ def load(data: List[Dict], s3_path: str, local_timezone: str, filename: str):
             "s3_path": full_s3_path,
         },
     }
+
+
+def build_partition_path(end_time: str) -> str:
+    """Build a partition-style S3 prefix from an end_time string."""
+
+    end_dt = datetime.strptime(end_time, "%Y-%m-%dT%H:%M:%S")
+    return end_dt.strftime("%Y/%m/%d")
 
 
 def get_date_range(date: str) -> tuple[str, str]:

@@ -48,20 +48,32 @@ aws lambda create-function \
   "queries": [
     {
       "query": "SELECT * FROM machine_partconfiguration pc INNER JOIN machine_part p ON pc.part_id = p.id;",
-      "path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_part_configurations/part_configuration.parquet"
+      "path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_part_configurations/part_configuration.parquet",
+      "schema": "part_configuration"
     },
     {
       "query": "SELECT * FROM machine_statuscode sc INNER JOIN machine_status s ON sc.status_id = s.id ORDER BY sc.code;",
-      "path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_status_code/machines_status_code.parquet"
+      "path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_status_code/machines_status_code.parquet",
+      "schema": "machine_status_code"
+    },
+    {
+      "query": "SELECT DISTINCT(mgm.machine_id), child.id   AS machine_group_child_id, child.name AS machine_group_child_name, parent.id   AS machine_group_parent_id, parent.name AS machine_group_parent_name, grandparent.id   AS machine_group_grandparent_id, grandparent.name AS machine_group_grandparent_name, great_grandparent.id   AS machine_group_great_grandparent_id, great_grandparent.name AS machine_group_great_grandparent_name FROM machine_machinegroup_machines mgm LEFT JOIN machine_machinegroup child ON child.id = mgm.machinegroup_id LEFT JOIN machine_machinegroup parent ON parent.id = child.parent_group_id LEFT JOIN machine_machinegroup grandparent ON grandparent.id = parent.parent_group_id LEFT JOIN machine_machinegroup great_grandparent ON great_grandparent.id = grandparent.parent_group_id ORDER BY mgm.machine_id;",
+      "path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_groups_hierarchy/machines_groups_hierarchy.parquet",
+      "schema": "machines_groups_hierarchy"
+    },
+    {
+      "query":"SELECT  * from user_shift;",
+      "path":"s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_shifts/shifts.parquet",
+      "schema": "shifts"
     }
   ]
 }
 ```
 
-## 7) Reference: Hive External Table
+## 7) Amazon Athena Tables
 
 ```sql
-CREATE EXTERNAL TABLE part_configuration (
+CREATE EXTERNAL TABLE default.dim_part_configuration (
     id BIGINT,
     seconds_per_part DOUBLE,
     machine_id BIGINT,
@@ -73,4 +85,43 @@ CREATE EXTERNAL TABLE part_configuration (
 )
 STORED AS PARQUET
 LOCATION 's3://bax-bxty-thf-data-warehouse/warehouse/thf/dim_part_configuration/part_configuration.parquet'
+
+MSCK REPAIR TABLE default.dim_part_configuration;
+```
+
+```sql
+CREATE EXTERNAL TABLE IF NOT EXISTS default.dim_shifts (
+    `id` int,
+    `name` string,
+    `color` string,
+    `is_active` int,
+    `active_start_date` timestamp,
+    `active_end_date` timestamp,
+    `group_id` int,
+    `erp_shift_name` string
+)
+STORED AS PARQUET
+LOCATION 's3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_shifts/'
+TBLPROPERTIES ("parquet.compress"="snappy");
+
+MSCK REPAIR TABLE default.dim_shifts;
+```
+
+```sql
+CREATE EXTERNAL TABLE IF NOT EXISTS default.dim_machines_groups_hierarchy (
+    `machine_id` int,
+    `machine_group_child_id` int,
+    `machine_group_child_name` string,
+    `machine_group_parent_id` int,
+    `machine_group_parent_name` string,
+    `machine_group_grandparent_id` int,
+    `machine_group_grandparent_name` string,
+    `machine_group_great_grandparent_id` int,
+    `machine_group_great_grandparent_name` string
+)
+STORED AS PARQUET
+LOCATION 's3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_groups_hierarchy/'
+TBLPROPERTIES ("parquet.compress"="snappy");
+
+MSCK REPAIR TABLE default.dim_machines_groups_hierarchy;
 ```

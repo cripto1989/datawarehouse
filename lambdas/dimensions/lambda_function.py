@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 import awswrangler as wr
 import pandas as pd
 from db import execute_query, get_db_connection
+from schemas import SCHEMAS
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -19,7 +20,7 @@ DB_NAME = os.environ.get("DB_NAME")
 DB_PORT = int(os.environ.get("DB_PORT", 3306))
 
 
-def save_results_to_s3(results: List[Dict[str, Any]], s3_path: str) -> str:
+def save_results_to_s3(results: List[Dict[str, Any]], s3_path: str, schema: str) -> str:
     """
     Saves query results to S3 in Parquet format using AWS Wrangler.
 
@@ -52,6 +53,7 @@ def save_results_to_s3(results: List[Dict[str, Any]], s3_path: str) -> str:
             path=s3_path,
             index=False,
             compression="snappy",
+            dtype=SCHEMAS.get(schema, None),  # Use schema if provided, else None
         )
 
         print(f"Successfully saved parquet file to S3: {s3_path}")
@@ -100,6 +102,7 @@ def lambda_handler(event, context):
             try:
                 query = query_obj.get("query")
                 s3_path = query_obj.get("path")
+                schema = query_obj.get("schema")
 
                 if not query:
                     failed_queries.append({"index": index, "error": "Query not provided in query object"})
@@ -118,7 +121,7 @@ def lambda_handler(event, context):
 
                 # Save results to S3
                 try:
-                    s3_save_path = save_results_to_s3(results, s3_path)
+                    s3_save_path = save_results_to_s3(results, s3_path, schema=schema)
                     processed_queries.append(
                         {
                             "index": index,

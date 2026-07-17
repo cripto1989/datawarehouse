@@ -21,9 +21,9 @@ docker build --provenance=false -t bax-bxty-thf-datawarehouse-raw-events .
 ## 4) Tag and Push Docker Image
 
 ```bash
-docker tag bax-bxty-thf-datawarehouse-raw-events:latest 082347614916.dkr.ecr.eu-central-1.amazonaws.com/bax-bxty-thf-datawarehouse-raw-events:latest
+docker tag bax-bxty-thf-datawarehouse-raw-events:latest 082347614916.dkr.ecr.eu-central-1.amazonaws.com/bax-bxty-thf-datawarehouse-raw-events
 
-docker push 082347614916.dkr.ecr.eu-central-1.amazonaws.com/bax-bxty-thf-datawarehouse-raw-events:latest
+docker push 082347614916.dkr.ecr.eu-central-1.amazonaws.com/bax-bxty-thf-datawarehouse-raw-events
 ```
 
 ## 5) Deploy Lambda Function
