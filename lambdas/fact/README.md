@@ -104,3 +104,11 @@ from events
 inner join (select id, name, color from dim_shifts) as s on events.shift_id = s.id
 inner join machines_groups_hierarchy as mgh on events.machine_id=mgh.machine_id;
 ```
+
+## 7) Run the lambda
+
+```sh
+gimme-aws-creds --profile default
+
+aws lambda invoke --function-name bax-bxty-thf-etl --region eu-central-1 --invocation-type Event --cli-binary-format raw-in-base64-out --payload file://payload.json response.json
+```

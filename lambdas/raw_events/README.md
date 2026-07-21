@@ -51,3 +51,11 @@ aws lambda create-function \
   "s3_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/raw/events/"
 }
 ```
+
+## 7) Run the lambda
+
+```sh
+gimme-aws-creds --profile default
+
+aws lambda invoke --function-name bax-bxty-thf-raw-events --region eu-central-1 --invocation-type Event --cli-binary-format raw-in-base64-out --payload file://payload.json response.json
+```
