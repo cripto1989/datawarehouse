@@ -32,6 +32,7 @@ def lambda_handler(event, context):
     end_time = event.get("end_time")
     index_name = event.get("index_name", "your-default-index")
     local_timezone = event.get("local_timezone", "Europe/London")
+    invoke_transforming_lambda = event.get("invoke_transforming_lambda", False)
 
     # OpenSearch configuration from environment variables
     opensearch_endpoint = os.environ.get("OPENSEARCH_ENDPOINT", "")
@@ -67,16 +68,18 @@ def lambda_handler(event, context):
     s3_path = event.get("s3_path")
     partition_path = build_partition_path(end_time)
 
-    # Invoke transforming lambda function to process the newly loaded data
-    lambda_client = boto3.client("lambda")
-    payload = {
-        "save_to_s3": True,
-        "events_path": f"s3://bax-bxty-thf-data-warehouse/warehouse/thf/raw/events/raw_events_{end_time.replace('-', '')[:8]}.jsonl",
-        "part_configuration_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_part_configurations/part_configuration.parquet",
-        "machine_status_code_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_status_code/machines_status_code.parquet",
-        "s3_output_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/fact_events/",
-    }
-    lambda_client.invoke(FunctionName="bax-bxty-thf-etl", InvocationType="Event", Payload=json.dumps(payload))
+    if invoke_transforming_lambda:
+        # Invoke transforming lambda function to process the newly loaded data
+        lambda_client = boto3.client("lambda")
+        payload = {
+            "save_to_s3": True,
+            "events_path": f"s3://bax-bxty-thf-data-warehouse/warehouse/thf/raw/events/raw_events_{end_time.replace('-', '')[:8]}.jsonl",
+            "part_configuration_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_part_configurations/part_configuration.parquet",
+            "machine_status_code_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_status_code/machines_status_code.parquet",
+            "s3_output_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/fact_events/",
+        }
+        logger.info(f"Invoking transforming lambda function with payload: {json.dumps(payload)}")
+        lambda_client.invoke(FunctionName="bax-bxty-thf-etl", InvocationType="Event", Payload=json.dumps(payload))
 
     return load(
         data=data,
@@ -258,4 +261,4 @@ def build_partition_path(end_time: str) -> str:
     """Build a partition-style S3 prefix from an end_time string."""
 
     end_dt = datetime.strptime(end_time, "%Y-%m-%dT%H:%M:%S")
-    return end_dt.strftime("%Y/%m/%d")
+    return end_dt.strftime("%Y/%m")
