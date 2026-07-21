@@ -6,7 +6,7 @@ echo "🔧 Setting up dev container..."
 # Update apt and install system packages
 echo "📦 Installing system packages..."
 apt-get update
-apt-get install -y zip zsh git
+apt-get install -y zip zsh git awscli
 
 # Upgrade pip
 echo "⬆️  Upgrading pip..."
@@ -46,5 +46,12 @@ fi
 # Set default shell to zsh
 echo "🐚 Setting default shell to zsh..."
 chsh -s /bin/zsh
+
+# Initialize AWS credentials directory structure
+echo "🔐 Initializing AWS credentials directory..."
+mkdir -p "$HOME/.aws/sso/cache"
+chmod 700 "$HOME/.aws"
+chmod 700 "$HOME/.aws/sso"
+chmod 700 "$HOME/.aws/sso/cache"
 
 echo "✅ Dev container setup complete!"

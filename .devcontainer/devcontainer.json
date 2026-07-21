@@ -10,8 +10,15 @@
         "wayou.vscode-todo-highlight",
         "AtomMaterial.a-file-icon-vscode",
         "johnpapa.vscode-peacock",
-        "AdamViola.parquet-explorer"
+        "AdamViola.parquet-explorer",
+        "AmazonWebServices.aws-toolkit-vscode"
       ]
     }
+  },
+  "mounts": [
+    "source=${localEnv:USERPROFILE}\\.aws,target=/root/.aws,type=bind"
+  ],
+  "containerEnv": {
+    "AWS_PROFILE": "default"
   }
 }

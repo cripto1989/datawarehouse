@@ -45,7 +45,7 @@ def lambda_handler(event, context):
         validate_time_range(start_time, end_time)
     else:
         today = datetime.now(ZoneInfo(local_timezone)).date() + timedelta(days=-1)
-        today = today.date().strftime("%Y-%m-%d")
+        today = today.strftime("%Y-%m-%d")
         start_time, end_time = get_date_range(today)
     logger.info(f"From {start_time} to {end_time}.")
 
