@@ -14,5 +14,11 @@
         "AmazonWebServices.aws-toolkit-vscode"
       ]
     }
+  },
+  "mounts": [
+    "source=${localEnv:USERPROFILE}\\.aws,target=/root/.aws,type=bind"
+  ],
+  "containerEnv": {
+    "AWS_PROFILE": "default"
   }
 }
