@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 import boto3
@@ -23,7 +23,9 @@ def lambda_handler(event, context):
         "start_time": "2024-01-01T00:00:00",
         "end_time": "2024-01-31T23:59:59",
         "index_name": "your-index-name",
-        "local_timezone": "Europe/London"
+        "local_timezone": "Europe/London",
+        "invoke_transforming_lambda": true,
+        "machine_ids": [1, 2, 3, 4, 5]
     }
     """
 
@@ -33,6 +35,7 @@ def lambda_handler(event, context):
     index_name = event.get("index_name", "your-default-index")
     local_timezone = event.get("local_timezone", "Europe/London")
     invoke_transforming_lambda = event.get("invoke_transforming_lambda", False)
+    machine_ids = event.get("machine_ids")
 
     # OpenSearch configuration from environment variables
     opensearch_endpoint = os.environ.get("OPENSEARCH_ENDPOINT", "")
@@ -51,7 +54,12 @@ def lambda_handler(event, context):
         start_time, end_time = get_date_range(today)
     logger.info(f"From {start_time} to {end_time}.")
 
-    filename = f"raw_events_{end_time.replace('-', '')[:8]}.jsonl"
+    date_key = end_time.replace("-", "")[:8]
+    if machine_ids:
+        machine_suffix = "_machines_" + "_".join(str(machine_id) for machine_id in sorted(machine_ids))
+    else:
+        machine_suffix = "_all_machines"
+    filename = f"raw_events_{date_key}{machine_suffix}.jsonl"
     opensearch_client = OpenSearchClient(
         region=region,
         endpoint=opensearch_endpoint,
@@ -64,16 +72,25 @@ def lambda_handler(event, context):
         start_time=start_time,
         end_time=end_time,
         index_name=index_name,
+        machine_ids=machine_ids,
     )
     s3_path = event.get("s3_path")
     partition_path = build_partition_path(end_time)
 
+    load_result = load(
+        data=data,
+        s3_path=s3_path,
+        filename=filename,
+        partition_path=partition_path,
+    )
+
     if invoke_transforming_lambda:
-        # Invoke transforming lambda function to process the newly loaded data
+        # Invoke the transforming lambda only after the shard has been loaded.
         lambda_client = boto3.client("lambda")
+        events_path = f"{s3_path.rstrip('/')}/{partition_path.strip('/')}/{filename}"
         payload = {
             "save_to_s3": True,
-            "events_path": f"s3://bax-bxty-thf-data-warehouse/warehouse/thf/raw/events/raw_events_{end_time.replace('-', '')[:8]}.jsonl",
+            "events_path": events_path,
             "part_configuration_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_part_configurations/part_configuration.parquet",
             "machine_status_code_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_status_code/machines_status_code.parquet",
             "s3_output_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/fact_events/",
@@ -81,15 +98,16 @@ def lambda_handler(event, context):
         logger.info(f"Invoking transforming lambda function with payload: {json.dumps(payload)}")
         lambda_client.invoke(FunctionName="bax-bxty-thf-etl", InvocationType="Event", Payload=json.dumps(payload))
 
-    return load(
-        data=data,
-        s3_path=s3_path,
-        filename=filename,
-        partition_path=partition_path,
-    )
+    return load_result
 
 
-def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str) -> List[Dict]:
+def extract(
+    client: OpenSearch,
+    start_time: str,
+    end_time: str,
+    index_name: str,
+    machine_ids: Optional[List[int]] = None,
+) -> List[Dict]:
     """
     Query OpenSearch for documents whose `time` field falls within a given range.
 
@@ -107,6 +125,9 @@ def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str)
         End of the time range filter, in a format accepted by OpenSearch.
     index_name : str
         The name of the OpenSearch index to search.
+    machine_ids : Optional[List[int]]
+        Optional list of machine IDs to filter by. If omitted, events from all
+        machines are returned.
 
     Returns
     -------
@@ -121,6 +142,10 @@ def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str)
     - Limits the initial query size to 10,000 records.
     - Clears the scroll context after retrieval.
     """
+
+    must_clauses = [{"range": {"time": {"gte": start_time, "lte": end_time}}}]
+    if machine_ids:
+        must_clauses.append({"terms": {"machine_id": machine_ids}})
 
     query = {
         "_source": [
@@ -144,7 +169,7 @@ def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str)
             "shift_end",
             "production_date",
         ],
-        "query": {"bool": {"must": [{"range": {"time": {"gte": start_time, "lte": end_time}}}]}},
+        "query": {"bool": {"must": must_clauses}},
         "size": 10000,  # Adjust based on your needs
     }
 
@@ -186,7 +211,8 @@ def load(data: List[Dict], s3_path: str, filename: str, partition_path: str = ""
     (newline-delimited JSON), where each line is a separate JSON object. This is an optimized
     format for large datasets and is compatible with many data processing tools.
 
-    The file is saved with a timestamp to ensure uniqueness and avoid overwriting existing data.
+    Each extraction writes a separate file, allowing multiple machine batches for
+    the same date to coexist without overwriting one another.
 
     Parameters
     ----------
@@ -261,4 +287,4 @@ def build_partition_path(end_time: str) -> str:
     """Build a partition-style S3 prefix from an end_time string."""
 
     end_dt = datetime.strptime(end_time, "%Y-%m-%dT%H:%M:%S")
-    return end_dt.strftime("%Y/%m")
+    return end_dt.strftime("%Y/%m/%d")
