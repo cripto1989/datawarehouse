@@ -6,7 +6,6 @@ from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 import boto3
-from dates import get_date_range, validate_datetime_string, validate_time_range
 from opensearchpy import OpenSearch
 from search_client import OpenSearchClient
 
@@ -20,8 +19,7 @@ def lambda_handler(event, context):
 
     Expected event structure:
     {
-        "start_time": "2024-01-01T00:00:00",
-        "end_time": "2024-01-31T23:59:59",
+        "date": "2026-07-07"
         "index_name": "your-index-name",
         "local_timezone": "Europe/London",
         "invoke_transforming_lambda": true,
@@ -30,8 +28,9 @@ def lambda_handler(event, context):
     """
 
     # Get parameters from event
-    start_time = event.get("start_time")
-    end_time = event.get("end_time")
+    # start_time = event.get("start_time")
+    # end_time = event.get("end_time")
+    date = event.get("date")
     index_name = event.get("index_name", "your-default-index")
     local_timezone = event.get("local_timezone", "Europe/London")
     invoke_transforming_lambda = event.get("invoke_transforming_lambda", False)
@@ -43,18 +42,19 @@ def lambda_handler(event, context):
     username = os.environ.get("OPENSEARCH_USERNAME")
     password = os.environ.get("OPENSEARCH_PASSWORD")
 
-    if start_time and end_time:
-        logger.info("Start time and end time received.")
-        start_time = validate_datetime_string(start_time, "start_time")
-        end_time = validate_datetime_string(end_time, "end_time")
-        validate_time_range(start_time, end_time)
-    else:
-        today = datetime.now(ZoneInfo(local_timezone)).date() + timedelta(days=-1)
-        today = today.strftime("%Y-%m-%d")
-        start_time, end_time = get_date_range(today)
+    # if start_time and end_time:
+    #     logger.info("Start time and end time received.")
+    #     start_time = validate_datetime_string(start_time, "start_time")
+    #     end_time = validate_datetime_string(end_time, "end_time")
+    #     validate_time_range(start_time, end_time)
+    # else:
+    #     today = datetime.now(ZoneInfo(local_timezone)).date() + timedelta(days=-1)
+    #     today = today.strftime("%Y-%m-%d")
+    #     start_time, end_time = get_date_range(today)
+    start_time, end_time = utc_range_for_local_day(date, local_timezone)
     logger.info(f"From {start_time} to {end_time}.")
 
-    date_key = end_time.replace("-", "")[:8]
+    date_key = date.replace("-", "")[:8]
     if machine_ids:
         machine_suffix = "_machines_" + "_".join(str(machine_id) for machine_id in sorted(machine_ids))
     else:
@@ -75,7 +75,7 @@ def lambda_handler(event, context):
         machine_ids=machine_ids,
     )
     s3_path = event.get("s3_path")
-    partition_path = build_partition_path(end_time)
+    partition_path = build_partition_path(date)
 
     load_result = load(
         data=data,
@@ -286,5 +286,20 @@ def load(data: List[Dict], s3_path: str, filename: str, partition_path: str = ""
 def build_partition_path(end_time: str) -> str:
     """Build a partition-style S3 prefix from an end_time string."""
 
-    end_dt = datetime.strptime(end_time, "%Y-%m-%dT%H:%M:%S")
+    end_dt = datetime.strptime(end_time, "%Y-%m-%d")
     return end_dt.strftime("%Y/%m/%d")
+
+
+def utc_range_for_local_day(date_str: str, tz_name: str):
+    """
+    Given a date YYYY-MM-DD and a timezone name (e.g., 'Europe/London', 'US/Eastern'),
+    returns the UTC start and end timestamps that correspond to that local day.
+    """
+    local_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    tz = ZoneInfo(tz_name)
+    start_local = datetime(local_date.year, local_date.month, local_date.day, 0, 0, 0, tzinfo=tz)
+    end_local = start_local + timedelta(days=1)
+    utc = ZoneInfo("UTC")
+    start_utc = start_local.astimezone(utc)
+    end_utc = end_local.astimezone(utc) - timedelta(seconds=1)
+    return start_utc.strftime("%Y-%m-%dT%H:%M:%S"), end_utc.strftime("%Y-%m-%dT%H:%M:%S")
