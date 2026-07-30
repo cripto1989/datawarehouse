@@ -1,0 +1,32 @@
+downtime_schema = {
+    "time": "timestamp",
+    "machine_id": "int",
+    "machine_name": "string",
+    "status_code": "int",
+    "no_of_stops": "int",
+    "event_duration": "int",
+    "factory_order": "string",
+    "part_number": "string",
+    # Status code
+    "code": "int",
+    "downtime_reason_minor_id": "int",
+    "downtime_reason_minor": "string",
+    "downtime_reason_major_id": "int",
+    "downtime_reason_major": "string",
+    "is_planned_downtime": "int",
+    "is_unplanned_downtime": "int",
+    "downtime_type": "string",
+    # Shift
+    "shift_id": "int",
+    "shift_name": "string",
+    "shift_color": "string",
+    # Hierarchy
+    "machine_group_child_id": "int",
+    "machine_group_child_name": "string",
+    "machine_group_parent_id": "int",
+    "machine_group_parent_name": "string",
+    "machine_group_grandparent_id": "int",
+    "machine_group_grandparent_name": "string",
+    "machine_group_great_grandparent_id": "int",
+    "machine_group_great_grandparent_name": "string",
+}
