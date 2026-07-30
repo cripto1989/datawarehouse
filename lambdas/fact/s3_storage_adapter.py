@@ -1,5 +1,6 @@
 import awswrangler as wr
 import pandas as pd
+from schemas import events_schema
 from storage_port import StoragePort
 
 
@@ -19,6 +20,7 @@ class S3StorageAdapter(StoragePort):
             # TODO Enabling these two values allow sync our database/table, it requires the right permissions.
             # database="default",
             # table="thf_events",
+            dtype=events_schema,
             partition_cols=["machine_id", "year", "month", "day", "hour"],
         )
         pass
