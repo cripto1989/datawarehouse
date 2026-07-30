@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 import boto3
@@ -19,18 +19,22 @@ def lambda_handler(event, context):
 
     Expected event structure:
     {
-        "start_time": "2024-01-01T00:00:00",
-        "end_time": "2024-01-31T23:59:59",
+        "date": "2026-07-07"
         "index_name": "your-index-name",
-        "local_timezone": "Europe/London"
+        "local_timezone": "Europe/London",
+        "invoke_transforming_lambda": true,
+        "machine_ids": [1, 2, 3, 4, 5]
     }
     """
 
     # Get parameters from event
-    start_time = event.get("start_time")
-    end_time = event.get("end_time")
+    # start_time = event.get("start_time")
+    # end_time = event.get("end_time")
+    date = event.get("date")
     index_name = event.get("index_name", "your-default-index")
     local_timezone = event.get("local_timezone", "Europe/London")
+    invoke_transforming_lambda = event.get("invoke_transforming_lambda", False)
+    machine_ids = event.get("machine_ids")
 
     # OpenSearch configuration from environment variables
     opensearch_endpoint = os.environ.get("OPENSEARCH_ENDPOINT", "")
@@ -38,18 +42,24 @@ def lambda_handler(event, context):
     username = os.environ.get("OPENSEARCH_USERNAME")
     password = os.environ.get("OPENSEARCH_PASSWORD")
 
-    if start_time and end_time:
-        logger.info("Start time and end time received.")
-        start_time = validate_datetime_string(start_time, "start_time")
-        end_time = validate_datetime_string(end_time, "end_time")
-        validate_time_range(start_time, end_time)
-    else:
-        today = datetime.now(ZoneInfo(local_timezone)).date() + timedelta(days=-1)
-        today = today.strftime("%Y-%m-%d")
-        start_time, end_time = get_date_range(today)
+    # if start_time and end_time:
+    #     logger.info("Start time and end time received.")
+    #     start_time = validate_datetime_string(start_time, "start_time")
+    #     end_time = validate_datetime_string(end_time, "end_time")
+    #     validate_time_range(start_time, end_time)
+    # else:
+    #     today = datetime.now(ZoneInfo(local_timezone)).date() + timedelta(days=-1)
+    #     today = today.strftime("%Y-%m-%d")
+    #     start_time, end_time = get_date_range(today)
+    start_time, end_time = utc_range_for_local_day(date, local_timezone)
     logger.info(f"From {start_time} to {end_time}.")
 
-    filename = f"raw_events_{end_time.replace('-', '')[:8]}.jsonl"
+    date_key = date.replace("-", "")[:8]
+    if machine_ids:
+        machine_suffix = "_machines_" + "_".join(str(machine_id) for machine_id in sorted(machine_ids))
+    else:
+        machine_suffix = "_all_machines"
+    filename = f"raw_events_{date_key}{machine_suffix}.jsonl"
     opensearch_client = OpenSearchClient(
         region=region,
         endpoint=opensearch_endpoint,
@@ -62,18 +72,42 @@ def lambda_handler(event, context):
         start_time=start_time,
         end_time=end_time,
         index_name=index_name,
+        machine_ids=machine_ids,
     )
     s3_path = event.get("s3_path")
-    partition_path = build_partition_path(end_time)
-    return load(
+    partition_path = build_partition_path(date)
+
+    load_result = load(
         data=data,
         s3_path=s3_path,
         filename=filename,
         partition_path=partition_path,
     )
 
+    if invoke_transforming_lambda:
+        # Invoke the transforming lambda only after the shard has been loaded.
+        lambda_client = boto3.client("lambda")
+        events_path = f"{s3_path.rstrip('/')}/{partition_path.strip('/')}/{filename}"
+        payload = {
+            "save_to_s3": True,
+            "events_path": events_path,
+            "part_configuration_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_part_configurations/part_configuration.parquet",
+            "machine_status_code_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/dim_machines_status_code/machines_status_code.parquet",
+            "s3_output_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/curated/fact_events/",
+        }
+        logger.info(f"Invoking transforming lambda function with payload: {json.dumps(payload)}")
+        lambda_client.invoke(FunctionName="bax-bxty-thf-etl", InvocationType="Event", Payload=json.dumps(payload))
 
-def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str) -> List[Dict]:
+    return load_result
+
+
+def extract(
+    client: OpenSearch,
+    start_time: str,
+    end_time: str,
+    index_name: str,
+    machine_ids: Optional[List[int]] = None,
+) -> List[Dict]:
     """
     Query OpenSearch for documents whose `time` field falls within a given range.
 
@@ -91,6 +125,9 @@ def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str)
         End of the time range filter, in a format accepted by OpenSearch.
     index_name : str
         The name of the OpenSearch index to search.
+    machine_ids : Optional[List[int]]
+        Optional list of machine IDs to filter by. If omitted, events from all
+        machines are returned.
 
     Returns
     -------
@@ -105,6 +142,10 @@ def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str)
     - Limits the initial query size to 10,000 records.
     - Clears the scroll context after retrieval.
     """
+
+    must_clauses = [{"range": {"time": {"gte": start_time, "lte": end_time}}}]
+    if machine_ids:
+        must_clauses.append({"terms": {"machine_id": machine_ids}})
 
     query = {
         "_source": [
@@ -128,7 +169,7 @@ def extract(client: OpenSearch, start_time: str, end_time: str, index_name: str)
             "shift_end",
             "production_date",
         ],
-        "query": {"bool": {"must": [{"range": {"time": {"gte": start_time, "lte": end_time}}}]}},
+        "query": {"bool": {"must": must_clauses}},
         "size": 10000,  # Adjust based on your needs
     }
 
@@ -170,7 +211,8 @@ def load(data: List[Dict], s3_path: str, filename: str, partition_path: str = ""
     (newline-delimited JSON), where each line is a separate JSON object. This is an optimized
     format for large datasets and is compatible with many data processing tools.
 
-    The file is saved with a timestamp to ensure uniqueness and avoid overwriting existing data.
+    Each extraction writes a separate file, allowing multiple machine batches for
+    the same date to coexist without overwriting one another.
 
     Parameters
     ----------
@@ -244,86 +286,20 @@ def load(data: List[Dict], s3_path: str, filename: str, partition_path: str = ""
 def build_partition_path(end_time: str) -> str:
     """Build a partition-style S3 prefix from an end_time string."""
 
-    end_dt = datetime.strptime(end_time, "%Y-%m-%dT%H:%M:%S")
+    end_dt = datetime.strptime(end_time, "%Y-%m-%d")
     return end_dt.strftime("%Y/%m/%d")
 
 
-def get_date_range(date: str) -> tuple[str, str]:
+def utc_range_for_local_day(date_str: str, tz_name: str):
     """
-    Convert a date string (YYYY-MM-DD) into a start/end datetime range.
-
-    The start datetime is the previous day at 23:00:00.
-    The end datetime is the provided day at 22:59:59.
-
-    Returns:
-        Tuple of (start_datetime, end_datetime) formatted as:
-        %Y-%m-%dT%H:%M:%S
+    Given a date YYYY-MM-DD and a timezone name (e.g., 'Europe/London', 'US/Eastern'),
+    returns the UTC start and end timestamps that correspond to that local day.
     """
-
-    date_obj = datetime.strptime(date, "%Y-%m-%d")
-
-    start_datetime = (date_obj - timedelta(days=1)).replace(hour=23, minute=0, second=0, microsecond=0)
-    end_datetime = date_obj.replace(hour=22, minute=59, second=59, microsecond=0)
-
-    start_str = start_datetime.strftime("%Y-%m-%dT%H:%M:%S")
-    end_str = end_datetime.strftime("%Y-%m-%dT%H:%M:%S")
-
-    return start_str, end_str
-
-
-def validate_datetime_string(value: str, field_name: str = "datetime") -> str:
-    """
-    Validate a datetime string in the exact format YYYY-MM-DDTHH:MM:SS.
-
-    Parameters
-    ----------
-    value : str
-        The datetime string to validate.
-    field_name : str
-        The name of the field being validated, used in error messages.
-
-    Returns
-    -------
-    str
-        The validated datetime string.
-
-    Raises
-    ------
-    ValueError
-        If the value is not a string or does not match the expected format.
-    """
-    if not isinstance(value, str):
-        raise ValueError(f"{field_name} must be a string in the format YYYY-MM-DDTHH:MM:SS.")
-
-    try:
-        parsed_value = datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
-    except ValueError as exc:
-        raise ValueError(f"{field_name} must be a valid datetime string in the format YYYY-MM-DDTHH:MM:SS.") from exc
-
-    if parsed_value.strftime("%Y-%m-%dT%H:%M:%S") != value:
-        raise ValueError(f"{field_name} must match the exact format YYYY-MM-DDTHH:MM:SS.")
-
-    return value
-
-
-def validate_time_range(start_time: str, end_time: str) -> None:
-    """
-    Validate that end_time is greater than start_time.
-
-    Parameters
-    ----------
-    start_time : str
-        Start datetime string in the format YYYY-MM-DDTHH:MM:SS.
-    end_time : str
-        End datetime string in the format YYYY-MM-DDTHH:MM:SS.
-
-    Raises
-    ------
-    ValueError
-        If end_time is not greater than start_time.
-    """
-    start_dt = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S")
-    end_dt = datetime.strptime(end_time, "%Y-%m-%dT%H:%M:%S")
-
-    if end_dt <= start_dt:
-        raise ValueError("end_time must be greater than start_time.")
+    local_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    tz = ZoneInfo(tz_name)
+    start_local = datetime(local_date.year, local_date.month, local_date.day, 0, 0, 0, tzinfo=tz)
+    end_local = start_local + timedelta(days=1)
+    utc = ZoneInfo("UTC")
+    start_utc = start_local.astimezone(utc)
+    end_utc = end_local.astimezone(utc) - timedelta(seconds=1)
+    return start_utc.strftime("%Y-%m-%dT%H:%M:%S"), end_utc.strftime("%Y-%m-%dT%H:%M:%S")
