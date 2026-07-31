@@ -16,6 +16,10 @@ pip install --upgrade pip
 echo "📚 Installing development dependencies..."
 pip install -r requirements-dev.txt
 
+# Initialize pre-commit hooks
+echo "🪝 Installing pre-commit hooks..."
+pre-commit install
+
 # Setup Oh My Zsh (only if not already installed)
 if [ ! -d "$HOME/.oh-my-zsh" ]; then
   echo "🎨 Setting up Oh My Zsh..."
