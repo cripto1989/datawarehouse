@@ -3,6 +3,7 @@ ipython
 jsonpath-ng==1.8.0
 opensearch-py==2.7.1
 pandas==2.2.0
+pip-tools==7.6.0
 pre-commit
 pyarrow==14.0.2
 PyMySQL==1.2.0
