@@ -101,6 +101,7 @@ def lambda_handler(event, context):
         "part_number",
         "shift_start",
         "shift_end",
+        "production_date",
         # Status code
         "code",
         "downtime_reason_minor_id",
