@@ -49,7 +49,20 @@ fi
 
 # Set default shell to zsh
 echo "🐚 Setting default shell to zsh..."
-chsh -s /bin/zsh
+ZSH_BIN="$(command -v zsh)"
+
+if [ -z "$ZSH_BIN" ]; then
+  echo "✗ zsh is not installed or not on PATH"
+  exit 1
+fi
+
+grep -qxF "$ZSH_BIN" /etc/shells || echo "$ZSH_BIN" >> /etc/shells
+
+if [ "$(id -u)" -eq 0 ]; then
+  usermod -s "$ZSH_BIN" "${USERNAME:-root}"
+else
+  chsh -s "$ZSH_BIN" "$(whoami)"
+fi
 
 # Initialize AWS credentials directory structure
 echo "🔐 Initializing AWS credentials directory..."
