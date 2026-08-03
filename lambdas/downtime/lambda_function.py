@@ -84,8 +84,6 @@ def lambda_handler(event, context):
 
     events_df = events_df.merge(machines_groups_hierarchy_df, how="left", left_on="machine_id", right_on="machine_id")
 
-    events_df = events_df.loc[events_df["status_code"].isin([999, 9999])].copy()
-
     events_df["time"] = pd.to_datetime(events_df["time"], errors="coerce")
     events_df["year"] = events_df["time"].dt.year.astype(str)
     events_df["month"] = events_df["time"].dt.month.map(lambda x: f"{x:02d}")
@@ -101,6 +99,8 @@ def lambda_handler(event, context):
         "event_duration",
         "factory_order",
         "part_number",
+        "shift_start",
+        "shift_end",
         # Status code
         "code",
         "downtime_reason_minor_id",
