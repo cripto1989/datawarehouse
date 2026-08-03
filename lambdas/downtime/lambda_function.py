@@ -5,13 +5,22 @@ from schemas import downtime_schema
 
 
 def lambda_handler(event, context):
+    """
+    {
+        "events_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/raw/events/2026/07/01/raw_events_20260701_machines_84_85_86_87_155.jsonl",
+        "machines_status_code_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/dim_machines_status_code/machines_status_code.parquet",
+        "shifts_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/dim_shifts/shifts.parquet",
+        "machines_groups_hierarchy_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/dim_machines_groups_hierarchy/machines_groups_hierarchy.parquet",
+        "s3_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/fact_downtime/"
+    }
+    """
     events_path = event.get("events_path", "")
     machines_status_code_path = event.get("machines_status_code_path", "")
     shifts_path = event.get("shifts_path", "")
     machines_groups_hierarchy_path = event.get("machines_groups_hierarchy_path", "")
     s3_path = event.get("s3_path", "")
 
-    events_df = pd.read_json(events_path)
+    events_df = pd.read_json(events_path, lines=True)
     machines_status_code_df = pd.read_parquet(machines_status_code_path)
     shifts_df = pd.read_parquet(shifts_path)
     machines_groups_hierarchy_df = pd.read_parquet(machines_groups_hierarchy_path)
@@ -73,12 +82,13 @@ def lambda_handler(event, context):
 
     events_df = events_df.merge(shifts_df, how="left", left_on="shift_id", right_on="shift_id")
 
-    events_df = events_df.merge(
-        machines_groups_hierarchy_df, how="left", left_on="machine_id", right_on="machine_id", suffixes=("", "_TBD")
-    )
+    events_df = events_df.merge(machines_groups_hierarchy_df, how="left", left_on="machine_id", right_on="machine_id")
 
-    events_df = events_df.loc[events_df["status_code"].isin([999, 9999])].copy()
-    events_df
+    events_df["time"] = pd.to_datetime(events_df["time"], errors="coerce")
+    events_df["year"] = events_df["time"].dt.year.astype(str)
+    events_df["month"] = events_df["time"].dt.month.map(lambda x: f"{x:02d}")
+    events_df["day"] = events_df["time"].dt.day.map(lambda x: f"{x:02d}")
+    events_df["hour"] = events_df["time"].dt.hour.map(lambda x: f"{x:02d}")
 
     columns_to_write = [
         "time",
@@ -89,8 +99,11 @@ def lambda_handler(event, context):
         "event_duration",
         "factory_order",
         "part_number",
+        "shift_start",
+        "shift_end",
         # Status code
-        "codedowntime_reason_minor_id",
+        "code",
+        "downtime_reason_minor_id",
         "downtime_reason_minor",
         "downtime_reason_major_id",
         "downtime_reason_major",
@@ -103,21 +116,30 @@ def lambda_handler(event, context):
         "shift_color",
         # Hierarchy
         "machine_group_child_id",
-        "machine_group_child_name ",
-        "machine_group_parent_id ",
-        "machine_group_parent_name ",
-        "machine_group_grandparent_id ",
-        "machine_group_grandparent_name ",
-        "machine_group_great_grandparent_id ",
+        "machine_group_child_name",
+        "machine_group_parent_id",
+        "machine_group_parent_name",
+        "machine_group_grandparent_id",
+        "machine_group_grandparent_name",
+        "machine_group_great_grandparent_id",
         "machine_group_great_grandparent_name",
+        "year",
+        "month",
+        "day",
+        "hour",
     ]
 
     events_df = events_df.loc[:, columns_to_write].copy()
 
+    # Exclude those running status code.
+    events_df = events_df.loc[events_df["status_code"] != 100]
+
     wr.s3.to_parquet(
         df=events_df,
         path=s3_path,
-        index=False,
         compression="snappy",
         dtype=downtime_schema,
+        partition_cols=["machine_id", "year", "month", "day", "hour"],
+        dataset=True,
+        mode="overwrite_partitions",
     )

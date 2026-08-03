@@ -1,1 +1,4 @@
 awswrangler==3.6.0
+fsspec==2024.2.0
+pandas==2.2.0
+s3fs==2024.2.0
