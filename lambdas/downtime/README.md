@@ -12,11 +12,13 @@ gimme-aws-creds --profile default
 ```bash
 aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 082347614916.dkr.ecr.us-east-2.amazonaws.com
 
+$VERSION = (Get-Content VERSION -Raw).Trim()
+
 docker build --provenance=false -t bax-bxty-dm-nc-downtime .
 
-docker tag bax-bxty-dm-nc-downtime:latest 082347614916.dkr.ecr.us-east-2.amazonaws.com/bax-bxty-dm-nc-downtime:latest
+docker tag bax-bxty-dm-nc-downtime:$VERSION 082347614916.dkr.ecr.us-east-2.amazonaws.com/bax-bxty-dm-nc-downtime:$VERSION
 
-docker push 082347614916.dkr.ecr.us-east-2.amazonaws.com/bax-bxty-dm-nc-downtime:latest
+docker push 082347614916.dkr.ecr.us-east-2.amazonaws.com/bax-bxty-dm-nc-downtime:$VERSION
 ```
 
 
