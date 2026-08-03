@@ -55,6 +55,8 @@ gimme-aws-creds --profile default
 aws lambda invoke --function-name bax-bxty-thf-raw-events --region eu-central-1 --invocation-type Event --cli-binary-format raw-in-base64-out --payload file://payload.json response.json
 ```
 
+## 8) Amazon Athena
+
 ```sql
 CREATE EXTERNAL TABLE IF NOT EXISTS default.nc_downtime_events (
     `time` timestamp,
@@ -64,6 +66,8 @@ CREATE EXTERNAL TABLE IF NOT EXISTS default.nc_downtime_events (
     `event_duration` int,
     `factory_order` string,
     `part_number` string,
+    `shift_start` timestamp,
+    `shift_end` timestamp,
     `code` int,
     `downtime_reason_minor_id` int,
     `downtime_reason_minor` string,
@@ -96,3 +100,67 @@ LOCATION 's3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/fact_downtime/
 TBLPROPERTIES ("parquet.compress"="snappy");
 
 MSCK REPAIR TABLE default.nc_downtime_events;
+```
+
+```sql
+CREATE OR REPLACE VIEW nc_downtime_2026 AS
+SELECT
+    machine_id,
+    machine_name,
+    status_code,
+    DATE(at_timezone(time, 'US/Eastern')) AS local_date,
+    SUM(event_duration) AS downtime_duration,
+    SUM(no_of_stops) AS no_of_stops,
+    part_number,
+    factory_order,
+    downtime_reason_minor,
+    downtime_reason_major,
+    downtime_type,
+    is_planned_downtime,
+    is_unplanned_downtime,
+    shift_id,
+    shift_name,
+    shift_start,
+    shift_end,
+    shift_color,
+    machine_group_child_id,
+    machine_group_child_name,
+    machine_group_parent_id,
+    machine_group_parent_name,
+    machine_group_grandparent_id,
+    machine_group_grandparent_name,
+    machine_group_great_grandparent_id,
+    machine_group_great_grandparent_name,
+    year,
+    month,
+    day
+FROM nc_downtime_events
+GROUP BY
+    machine_id,
+    machine_name,
+    status_code,
+    part_number,
+    factory_order,
+    downtime_reason_minor,
+    downtime_reason_major,
+    downtime_type,
+    is_planned_downtime,
+    is_unplanned_downtime,
+    shift_id,
+    shift_name,
+    shift_start,
+    shift_end,
+    shift_color,
+    machine_group_child_id,
+    machine_group_child_name,
+    machine_group_parent_id,
+    machine_group_parent_name,
+    machine_group_grandparent_id,
+    machine_group_grandparent_name,
+    machine_group_great_grandparent_id,
+    machine_group_great_grandparent_name,
+    year,
+    month,
+    day,
+    date(at_timezone(time, 'US/Eastern'));
+```
