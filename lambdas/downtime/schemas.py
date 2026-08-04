@@ -7,6 +7,7 @@ downtime_schema = {
     "event_duration": "int",
     "factory_order": "string",
     "part_number": "string",
+    "production_date": "timestamp",
     # Status code
     "code": "int",
     "downtime_reason_minor_id": "int",
@@ -19,6 +20,8 @@ downtime_schema = {
     # Shift
     "shift_id": "int",
     "shift_name": "string",
+    "shift_start": "timestamp",
+    "shift_end": "timestamp",
     "shift_color": "string",
     # Hierarchy
     "machine_group_child_id": "int",

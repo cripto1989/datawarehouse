@@ -84,6 +84,12 @@ def lambda_handler(event, context):
 
     events_df = events_df.merge(machines_groups_hierarchy_df, how="left", left_on="machine_id", right_on="machine_id")
 
+    # Converting the "time", "shift_start", and "shift_end" columns to datetime format
+    events_df["time"] = pd.to_datetime(events_df["time"], errors="coerce")
+    events_df["production_date"] = pd.to_datetime(events_df["production_date"], errors="coerce")
+    events_df["shift_start"] = pd.to_datetime(events_df["shift_start"], errors="coerce")
+    events_df["shift_end"] = pd.to_datetime(events_df["shift_end"], errors="coerce")
+
     events_df["time"] = pd.to_datetime(events_df["time"], errors="coerce")
     events_df["year"] = events_df["time"].dt.year.astype(str)
     events_df["month"] = events_df["time"].dt.month.map(lambda x: f"{x:02d}")
