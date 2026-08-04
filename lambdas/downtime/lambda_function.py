@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 from schemas import downtime_schema
 
+REQUIRED_KEYS = ["events_path", "machines_status_code_path", "shifts_path", "machines_groups_hierarchy_path", "s3_path"]
+
 
 def lambda_handler(event, context):
     """
@@ -14,11 +16,18 @@ def lambda_handler(event, context):
         "s3_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/fact_downtime/"
     }
     """
-    events_path = event.get("events_path", "")
-    machines_status_code_path = event.get("machines_status_code_path", "")
-    shifts_path = event.get("shifts_path", "")
-    machines_groups_hierarchy_path = event.get("machines_groups_hierarchy_path", "")
-    s3_path = event.get("s3_path", "")
+    missing = [name for name in REQUIRED_KEYS if not event.get(name)]
+    if missing:
+        return {
+            "statusCode": 400,
+            "body": {"message": f"Missing required fields: {missing}"},
+        }
+
+    events_path = event.get("events_path")
+    machines_status_code_path = event.get("machines_status_code_path")
+    shifts_path = event.get("shifts_path")
+    machines_groups_hierarchy_path = event.get("machines_groups_hierarchy_path")
+    s3_path = event.get("s3_path")
 
     events_df = pd.read_json(events_path, lines=True)
     machines_status_code_df = pd.read_parquet(machines_status_code_path)
@@ -26,12 +35,14 @@ def lambda_handler(event, context):
     machines_groups_hierarchy_df = pd.read_parquet(machines_groups_hierarchy_path)
 
     # Sorting by machine_id and time
+    events_df["time"] = pd.to_datetime(events_df["time"], utc=True, errors="coerce")
+    events_df = events_df.dropna(subset=["time"])
     events_df = events_df.sort_values(by=["machine_id", "time"], ascending=[True, True])
 
-    # Finding the position of the "status_code" column in the DataFrame
+    # Creating the "next_status_code" column by shifting the "status_code" column within each machine_id group
+    next_status_code = events_df.groupby("machine_id")["status_code"].shift(-1).astype("Int64")
     status_code_position = events_df.columns.get_loc("status_code")
-
-    events_df.insert(status_code_position + 1, "next_status_code", events_df["status_code"].shift(-1).astype("Int64"))
+    events_df.insert(status_code_position + 1, "next_status_code", next_status_code)
 
     # Finding the position of the "next_status_code" column in the DataFrame
     next_status_code_position = events_df.columns.get_loc("next_status_code")
@@ -57,7 +68,9 @@ def lambda_handler(event, context):
         }
     )
 
-    events_df = events_df.merge(machines_status_code_df, how="left", left_on="status_code", right_on="code")
+    events_df = events_df.merge(
+        machines_status_code_df, how="left", left_on="status_code", right_on="code", validate="many_to_one"
+    )
     downtime_type_position = events_df.columns.get_loc("is_unplanned_downtime")
     downtime_type = np.select(
         [
@@ -80,11 +93,17 @@ def lambda_handler(event, context):
         columns={"id": "shift_id", "name": "shift_name", "color": "shift_color"}
     )
 
-    events_df = events_df.merge(shifts_df, how="left", left_on="shift_id", right_on="shift_id")
+    events_df = events_df.merge(shifts_df, how="left", left_on="shift_id", right_on="shift_id", validate="many_to_one")
 
-    events_df = events_df.merge(machines_groups_hierarchy_df, how="left", left_on="machine_id", right_on="machine_id")
+    events_df = events_df.merge(
+        machines_groups_hierarchy_df, how="left", left_on="machine_id", right_on="machine_id", validate="many_to_one"
+    )
 
-    events_df["time"] = pd.to_datetime(events_df["time"], errors="coerce")
+    # Converting the "shift_start", and "shift_end" columns to datetime format
+    events_df["production_date"] = pd.to_datetime(events_df["production_date"], errors="coerce")
+    events_df["shift_start"] = pd.to_datetime(events_df["shift_start"], errors="coerce")
+    events_df["shift_end"] = pd.to_datetime(events_df["shift_end"], errors="coerce")
+
     events_df["year"] = events_df["time"].dt.year.astype(str)
     events_df["month"] = events_df["time"].dt.month.map(lambda x: f"{x:02d}")
     events_df["day"] = events_df["time"].dt.day.map(lambda x: f"{x:02d}")
@@ -101,6 +120,7 @@ def lambda_handler(event, context):
         "part_number",
         "shift_start",
         "shift_end",
+        "production_date",
         # Status code
         "code",
         "downtime_reason_minor_id",
@@ -131,9 +151,6 @@ def lambda_handler(event, context):
 
     events_df = events_df.loc[:, columns_to_write].copy()
 
-    # Exclude those running status code.
-    events_df = events_df.loc[events_df["status_code"] != 100]
-
     wr.s3.to_parquet(
         df=events_df,
         path=s3_path,
@@ -143,3 +160,12 @@ def lambda_handler(event, context):
         dataset=True,
         mode="overwrite_partitions",
     )
+
+    return {
+        "statusCode": 200,
+        "body": {
+            "message": "Downtime data successfully written",
+            "records_count": len(events_df),
+            "s3_path": s3_path,
+        },
+    }

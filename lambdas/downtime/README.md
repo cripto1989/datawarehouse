@@ -12,11 +12,13 @@ gimme-aws-creds --profile default
 ```bash
 aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 082347614916.dkr.ecr.us-east-2.amazonaws.com
 
-docker build --provenance=false -t bax-bxty-dm-nc-downtime .
+$VERSION = (Get-Content VERSION -Raw).Trim()
 
-docker tag bax-bxty-dm-nc-downtime:latest 082347614916.dkr.ecr.us-east-2.amazonaws.com/bax-bxty-dm-nc-downtime:latest
+docker build --provenance=false -t bax-bxty-dm-nc-downtime:$VERSION .
 
-docker push 082347614916.dkr.ecr.us-east-2.amazonaws.com/bax-bxty-dm-nc-downtime:latest
+docker tag bax-bxty-dm-nc-downtime:$VERSION 082347614916.dkr.ecr.us-east-2.amazonaws.com/bax-bxty-dm-nc-downtime:$VERSION
+
+docker push 082347614916.dkr.ecr.us-east-2.amazonaws.com/bax-bxty-dm-nc-downtime:$VERSION
 ```
 
 
@@ -30,20 +32,11 @@ aws lambda create-function --function-name bax-bxty-dm-nc-downtime --role arn:aw
 
 ```json
 {
-  "start_time": "2026-07-01T04:00:00",
-  "end_time": "2026-07-02T03:59:59",
-  "index_name": "baxterity-production",
-  "s3_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/raw/events/",
-  "machine_ids": [84, 85, 86, 87, 88, 89, 90, 91, 92, 93]
-}
-```
-
-```json
-{
-  "start_time": "2026-06-25T23:00:00",
-  "end_time": "2026-06-26T22:59:59",
-  "index_name": "baxterity-production",
-  "s3_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/raw/events/"
+    "events_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/raw/events/2026/07/01/raw_events_20260701_machines_84_85_86_87_155.jsonl",
+    "machines_status_code_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/dim_machines_status_code/machines_status_code.parquet",
+    "shifts_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/dim_shifts/shifts.parquet",
+    "machines_groups_hierarchy_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/dim_machines_groups_hierarchy/machines_groups_hierarchy.parquet",
+    "s3_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/fact_downtime/"
 }
 ```
 
@@ -68,6 +61,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS default.nc_downtime_events (
     `part_number` string,
     `shift_start` timestamp,
     `shift_end` timestamp,
+    `production_date` timestamp,
     `code` int,
     `downtime_reason_minor_id` int,
     `downtime_reason_minor` string,
@@ -111,11 +105,13 @@ SELECT
     DATE(at_timezone(time, 'US/Eastern')) AS local_date,
     SUM(event_duration) AS downtime_duration,
     SUM(no_of_stops) AS no_of_stops,
+    SUM(CASE WHEN status_code = 100 THEN event_duration ELSE 0 END) AS runtime_mins,
     part_number,
     factory_order,
     downtime_reason_minor,
     downtime_reason_major,
     downtime_type,
+    DATE(at_timezone(production_date, 'US/Eastern')) AS production_date,
     is_planned_downtime,
     is_unplanned_downtime,
     shift_id,
@@ -162,5 +158,6 @@ GROUP BY
     year,
     month,
     day,
-    date(at_timezone(time, 'US/Eastern'));
+    date(at_timezone(time, 'US/Eastern')),
+    DATE(at_timezone(production_date, 'US/Eastern'));
 ```

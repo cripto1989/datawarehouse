@@ -8,9 +8,9 @@ echo "📦 Installing system packages..."
 apt-get update
 apt-get install -y zip zsh git awscli
 
-# Upgrade pip
+# Upgrade pip to a version compatible with pip-tools in this environment
 echo "⬆️  Upgrading pip..."
-pip install --upgrade pip
+python -m pip install --upgrade "pip<25"
 
 # Install dev dependencies
 echo "📚 Installing development dependencies..."
@@ -33,10 +33,12 @@ echo "🔍 Installing forgit plugin..."
 FORGIT_DIR="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/forgit"
 if [ ! -d "$FORGIT_DIR" ]; then
   git clone https://github.com/wfxr/forgit.git "$FORGIT_DIR"
-  sed -i 's/plugins=(git)/plugins=(git forgit)/' "$HOME/.zshrc"
 else
-  echo "✓ Forgit already installed, skipping..."
+  echo "✓ Forgit already installed, skipping clone..."
 fi
+
+# Ensure forgit is enabled in oh-my-zsh even on reruns
+grep -q "forgit" "$HOME/.zshrc" || sed -i 's/plugins=(git)/plugins=(git forgit)/' "$HOME/.zshrc"
 
 # Install fzf
 echo "🔎 Installing fzf..."
