@@ -32,20 +32,11 @@ aws lambda create-function --function-name bax-bxty-dm-nc-downtime --role arn:aw
 
 ```json
 {
-  "start_time": "2026-07-01T04:00:00",
-  "end_time": "2026-07-02T03:59:59",
-  "index_name": "baxterity-production",
-  "s3_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/raw/events/",
-  "machine_ids": [84, 85, 86, 87, 88, 89, 90, 91, 92, 93]
-}
-```
-
-```json
-{
-  "start_time": "2026-06-25T23:00:00",
-  "end_time": "2026-06-26T22:59:59",
-  "index_name": "baxterity-production",
-  "s3_path": "s3://bax-bxty-thf-data-warehouse/warehouse/thf/raw/events/"
+    "events_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/raw/events/2026/07/01/raw_events_20260701_machines_84_85_86_87_155.jsonl",
+    "machines_status_code_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/dim_machines_status_code/machines_status_code.parquet",
+    "shifts_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/dim_shifts/shifts.parquet",
+    "machines_groups_hierarchy_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/dim_machines_groups_hierarchy/machines_groups_hierarchy.parquet",
+    "s3_path": "s3://bax-bxty-dm-nc-data-warehouse/warehouse/nc/curated/fact_downtime/"
 }
 ```
 
