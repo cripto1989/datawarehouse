@@ -14,7 +14,7 @@ aws ecr get-login-password --region us-east-2 | docker login --username AWS --pa
 
 $VERSION = (Get-Content VERSION -Raw).Trim()
 
-docker build --provenance=false -t bax-bxty-dm-nc-downtime .
+docker build --provenance=false -t bax-bxty-dm-nc-downtime:$VERSION .
 
 docker tag bax-bxty-dm-nc-downtime:$VERSION 082347614916.dkr.ecr.us-east-2.amazonaws.com/bax-bxty-dm-nc-downtime:$VERSION
 
@@ -70,6 +70,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS default.nc_downtime_events (
     `part_number` string,
     `shift_start` timestamp,
     `shift_end` timestamp,
+    `production_date` timestamp,
     `code` int,
     `downtime_reason_minor_id` int,
     `downtime_reason_minor` string,
@@ -118,6 +119,7 @@ SELECT
     downtime_reason_minor,
     downtime_reason_major,
     downtime_type,
+    DATE(at_timezone(production_date, 'US/Eastern')) AS production_date,
     is_planned_downtime,
     is_unplanned_downtime,
     shift_id,
@@ -164,5 +166,6 @@ GROUP BY
     year,
     month,
     day,
-    date(at_timezone(time, 'US/Eastern'));
+    date(at_timezone(time, 'US/Eastern')),
+    DATE(at_timezone(production_date, 'US/Eastern'));
 ```
