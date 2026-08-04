@@ -105,6 +105,7 @@ SELECT
     DATE(at_timezone(time, 'US/Eastern')) AS local_date,
     SUM(event_duration) AS downtime_duration,
     SUM(no_of_stops) AS no_of_stops,
+    SUM(CASE WHEN status_code = 100 THEN event_duration ELSE 0 END) AS runtime_mins,
     part_number,
     factory_order,
     downtime_reason_minor,
